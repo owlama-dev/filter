@@ -1,0 +1,22 @@
+{
+  "name": "alphafilter-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file=.env --import tsx src/index.ts",
+    "dev": "node --env-file=.env --watch --import tsx src/index.ts",
+    "telegram:login": "node --env-file=.env --import tsx src/telegram-login.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "pg": "^8.16.3",
+    "telegram": "^2.26.22",
+    "tsx": "^4.19.0",
+    "zod": "^4.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.16.5",
+    "@types/pg": "^8.11.10",
+    "typescript": "^5.7.0"
+  }
+}

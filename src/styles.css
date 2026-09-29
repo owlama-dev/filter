@@ -1,0 +1,97 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme {
+  --font-sans: "Outfit", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --color-bg: #0b0b0c;
+  --color-background: #0b0b0c;
+  --color-surface: #141416;
+  --color-surface-2: #1c1c1f;
+  --color-card: #141416;
+  --color-popover: #18181b;
+  --color-fg: #f2f1ec;
+  --color-foreground: #f2f1ec;
+  --color-muted: #8c8b86;
+  --color-muted-foreground: #8c8b86;
+  --color-subtle: #6a6964;
+  --color-border: rgb(242 241 236 / 10%);
+  --color-input: rgb(242 241 236 / 12%);
+  --color-ring: #eceae3;
+  --color-primary: #eceae3;
+  --color-primary-foreground: #0b0b0c;
+  --color-secondary: #1c1c1f;
+  --color-secondary-foreground: #f2f1ec;
+  --color-accent: #222226;
+  --color-accent-foreground: #f2f1ec;
+  --color-destructive: #c96a66;
+  --color-destructive-foreground: #f2f1ec;
+  --color-pass: #8faf88;
+  --color-fail: #c96a66;
+  --color-warn: #c4a574;
+  --color-info: #8a9bb0;
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius: 12px;
+
+  --shadow-border: 0 0 0 1px rgb(242 241 236 / 8%);
+  --shadow-border-hover: 0 0 0 1px rgb(242 241 236 / 14%);
+
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    background: var(--color-bg);
+    color: var(--color-fg);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    min-height: 100dvh;
+    background: var(--color-bg);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  h1, h2, h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
