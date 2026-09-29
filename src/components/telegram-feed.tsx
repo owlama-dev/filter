@@ -16,7 +16,7 @@ export function TelegramFeed() {
       <header className="mb-3 flex items-baseline justify-between gap-3 px-1">
         <div>
           <h2 className="text-sm font-medium tracking-tight">On-chain tape</h2>
-          <p className="text-xs text-muted">New Solana pools from GeckoTerminal.</p>
+          <p className="text-xs text-muted">New Solana pools from DexScreener.</p>
         </div>
         <span className={cn("font-mono text-[11px] uppercase", running ? "text-pass" : "text-muted")}>
           {running ? "listening" : "paused"}
@@ -28,7 +28,7 @@ export function TelegramFeed() {
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
         {messages.length === 0 && (
           <p className="px-2 py-8 text-center text-sm text-muted">
-            Waiting for the first pool from GeckoTerminal.
+            Waiting for the first pool from DexScreener.
           </p>
         )}
         {messages.map((msg) => {

@@ -246,7 +246,12 @@ export function readOgSite(cwd = process.cwd()) {
   try {
     const raw = readFileSync(join(cwd, OG_SITE_REL_PATH), "utf8");
     const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const site = { ...parsed };
+    if (String(site.title ?? "").trim() === "AlphaFilter") {
+      delete site.title;
+    }
+    return site;
   } catch {
     return {};
   }
@@ -303,10 +308,10 @@ export function resolveOgTitle(
   host = "",
   documentTitle = "",
 ) {
-  const fromSite = String(site.title ?? "").trim();
-  if (fromSite) return fromSite;
   const fromDoc = String(documentTitle ?? "").trim();
   if (fromDoc) return fromDoc;
+  const fromSite = String(site.title ?? "").trim();
+  if (fromSite) return fromSite;
   const fromHost = appNameFromHost(host);
   if (fromHost && fromHost !== DEFAULT_APP_NAME) return fromHost;
   const fromArg = String(appName ?? "").trim();
@@ -402,14 +407,9 @@ function insertBeforeHeadClose(html, snippet) {
 
 export function normalizeHeadContext(ctx = {}) {
   const cwd = ctx.cwd ?? process.cwd();
-  // Middleware passes a baked `site`. Still consult the workspace so a
-  // public/og.jpg generated after that snapshot (or missed by a wrong cwd)
-  // wins over the og.grok.me placeholder. Vercel has no public/ to read, so
-  // a correct bake is unchanged.
-  const site = applyCustomCardFromFs(
-    ctx.site !== undefined ? ctx.site : snapshotOgIdentity(cwd).site,
-    cwd,
-  );
+  const explicitSite = ctx.site;
+  const fallbackSite = ctx.site !== undefined ? ctx.site : snapshotOgIdentity(cwd).site;
+  const site = explicitSite !== undefined ? fallbackSite : applyCustomCardFromFs(fallbackSite, cwd);
   const appName = resolveOgTitle(site, ctx.appName ?? DEFAULT_APP_NAME, ctx.host ?? "");
   return {
     appName,

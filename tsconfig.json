@@ -17,6 +17,7 @@
     "allowJs": true,
     "checkJs": true,
     "noEmit": true,
+    "ignoreDeprecations": "6.0",
     "types": [
       "vite/client",
       "node"

@@ -38,7 +38,7 @@ function SettingsPage() {
         <div className="mb-5 flex items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-medium">Live ingest</h2>
-            <p className="text-xs text-muted">Pull new Solana pools from GeckoTerminal.</p>
+            <p className="text-xs text-muted">Pull boosted Solana pools from DexScreener.</p>
           </div>
           <Switch checked={running} onCheckedChange={setRunning} />
         </div>
@@ -83,7 +83,7 @@ function SettingsPage() {
       <section className="rounded-2xl bg-surface p-4 text-sm text-muted shadow-[var(--shadow-border)] sm:p-5">
         <h2 className="mb-2 text-sm font-medium text-fg">What is real</h2>
         <p>
-          Market tape comes from the active source feed you configure for this desk. Mint and freeze authorities are read from Solana RPC when available. Holder maps use the largest-account call when the source exposes it. Deployer and same-block bundle checks stay modeled when the feed does not provide them, so the desk stays honest.
+          Market tape and pair metadata come from DexScreener. Mint, freeze, owner clustering, deployer history, early signer ages, same-slot transactions, and pool-account reads come from public Solana RPC when available. LP lock or burn is marked unknown when the public parsed account does not expose it; early signer age is a best-effort activity-age sample, not proof of funding source.
         </p>
       </section>
     </div>

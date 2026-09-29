@@ -108,9 +108,9 @@ export const KILL_RULE_META: Record<
 
 export const DEFAULT_CHANNELS: Channel[] = [
   {
-    id: "geckoterminal-solana-new-pools",
-    handle: "solana/new_pools",
-    title: "GeckoTerminal",
+    id: "dexscreener-solana-boosts",
+    handle: "solana/boosts",
+    title: "DexScreener",
     kind: "onchain_feed",
     enabled: true,
   },

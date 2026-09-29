@@ -11,7 +11,6 @@ const schema = z.object({
   ALERT_BOT_TOKEN: z.string().optional(),
   ALERT_CHAT_ID: z.string().optional(),
   PORT: z.coerce.number().default(8081),
-  GECKO_POLL_MS: z.coerce.number().default(45000),
 });
 
 export const env = schema.parse(process.env);

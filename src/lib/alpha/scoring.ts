@@ -42,11 +42,6 @@ function part(
   };
 }
 
-function isCurveDex(dexId: string | null) {
-  const d = (dexId ?? "").toLowerCase();
-  return d.includes("pump") || d.includes("moonshot") || d.includes("letsbonk");
-}
-
 function uniqueRatio(buyers: number | null, buys: number | null) {
   if (!buyers || !buys || buys <= 0) return null;
   return clamp((buyers / buys) * 100);
@@ -84,12 +79,14 @@ export function buildChecklist(
     },
     {
       id: "lp",
-      label: "Measure LP versus float",
-      done: enriched && m?.liquidityUsd != null,
+      label: "Read pool account and LP state",
+      done: analyzing && o?.lp != null,
       detail:
-        m?.liquidityUsd != null
-          ? `Depth ${Math.round(m.liquidityUsd)} USD on ${m.dexId ?? "unknown dex"}`
-          : "Waiting on market tape",
+        o?.lp
+          ? o.lp.poolAccountReadable
+            ? `${o.lp.reserveTokenAccounts} reserve token accounts queried · LP lock/burn ${o.lp.burnedOrLockedPct == null ? "not exposed" : `${o.lp.burnedOrLockedPct.toFixed(0)}%`}`
+            : "Pool account was not readable from public RPC"
+          : "Waiting on pool address and RPC",
     },
     {
       id: "tape",
@@ -97,14 +94,40 @@ export function buildChecklist(
       done: enriched && m?.pairAgeMin != null,
       detail:
         m?.pairAgeMin != null
-          ? `Pair age ${m.pairAgeMin < 1 ? "<1m" : `${Math.round(m.pairAgeMin)}m`} · ${m.buyers1h ?? "?"} unique 1h buyers`
+          ? `Pair age ${m.pairAgeMin < 1 ? "<1m" : `${Math.round(m.pairAgeMin)}m`} · ${m.buyers1h ?? "?"} published 1h buyers`
           : "No pair clock yet",
     },
     {
       id: "flow",
       label: "Score organic vs artificial flow",
       done: analyzing && m != null,
-      detail: m?.buyers24h != null ? `${m.buyers24h} unique 24h buyers` : undefined,
+      detail: m?.buyers24h != null
+        ? `${m.buyers24h} published unique 24h buyers`
+        : "DexScreener does not publish unique-buyer counts for this pair",
+    },
+    {
+      id: "deployer",
+      label: "Trace deployer wallet",
+      done: analyzing && o?.deployer != null,
+      detail: o?.deployer
+        ? `${o.deployer.wallet.slice(0, 4)}…${o.deployer.wallet.slice(-4)} · ${o.deployer.priorMintCount} prior mints in local ledger`
+        : "Mint creation fee payer not resolved",
+    },
+    {
+      id: "bundle",
+      label: "Inspect same-slot launch txs",
+      done: analyzing && o?.bundle != null,
+      detail: o?.bundle
+        ? `${o.bundle.sameSlotTxCount}/${o.bundle.earlyTxCount} early transactions share creation slot`
+        : "Signature history unavailable",
+    },
+    {
+      id: "fresh",
+      label: "Sample early signer ages",
+      done: analyzing && o?.freshWallets != null,
+      detail: o?.freshWallets
+        ? `${o.freshWallets.freshBuyerCount}/${o.freshWallets.earlyBuyerCount} sampled wallets are under 7 days old`
+        : "Funding-age sample unavailable",
     },
   ];
 }
@@ -153,19 +176,23 @@ function concentrationSignal(
 ): { signal: number; reason: string; source: SignalSource } {
   const holders = onchain?.topHolders ?? [];
   if (holders.length >= 3) {
-    const rest = holders.slice(1);
-    const topInsider = rest[0]?.pct ?? 0;
-    const top5 = rest.slice(0, 5).reduce((s, h) => s + h.pct, 0);
+    const clusters = new Map<string, number>();
+    for (const holder of holders) {
+      const key = holder.owner ?? holder.address;
+      clusters.set(key, Math.max(clusters.get(key) ?? 0, holder.clusterPct ?? holder.pct));
+    }
+    const ranked = [...clusters.values()].sort((a, b) => b - a);
+    const topInsider = ranked[0] ?? 0;
+    const top5 = ranked.slice(0, 5).reduce((s, pct) => s + pct, 0);
     let signal = 88;
     if (topInsider > 18) signal -= 40;
     else if (topInsider > 10) signal -= 22;
     else if (topInsider > 6) signal -= 10;
     if (top5 > 45) signal -= 18;
     else if (top5 > 32) signal -= 8;
-    const lp = holders[0]?.pct ?? 0;
     return {
       signal,
-      reason: `Top account (treated as LP/curve) ${lp.toFixed(1)}%. Largest non-LP ${topInsider.toFixed(1)}%. Next five wallets ${top5.toFixed(1)}% of supply.`,
+      reason: `Owner-clustered largest wallet ${topInsider.toFixed(1)}%. Top five owner clusters control ${top5.toFixed(1)}% of supply. Raw token accounts were deduplicated where owner metadata was available.`,
       source: "onchain",
     };
   }
@@ -185,38 +212,25 @@ function concentrationSignal(
   };
 }
 
-function lpSignal(market: MarketMetrics | null): { signal: number; reason: string; source: SignalSource } {
-  if (!market || market.liquidityUsd == null) {
-    return { signal: 40, reason: "No liquidity print yet.", source: "market" };
-  }
-  const liq = market.liquidityUsd;
-  let signal = 20;
-  if (liq >= 80_000) signal = 92;
-  else if (liq >= 25_000) signal = 78;
-  else if (liq >= 10_000) signal = 64;
-  else if (liq >= 4_000) signal = 48;
-  else if (liq >= 1_500) signal = 30;
-  else signal = 12;
-
-  if (isCurveDex(market.dexId)) {
-    signal = Math.min(74, signal + 8);
+function lpSignal(onchain: OnchainFacts | null, market: MarketMetrics | null): { signal: number; reason: string; source: SignalSource } {
+  const trail = onchain?.lp;
+  if (trail) {
+    if (!trail.poolAccountReadable) {
+      return { signal: 28, reason: `Pool ${trail.poolAddress?.slice(0, 8) ?? "account"} was queried but is not readable from public RPC. LP lock/burn is unverified.`, source: "onchain" };
+    }
+    if (trail.burnedOrLockedPct == null) {
+      return { signal: 48, reason: `Queried ${trail.dexId ?? "DEX"} pool ${trail.poolAddress?.slice(0, 8) ?? "account"} and found ${trail.reserveTokenAccounts} reserve token accounts. Public parsed RPC did not expose an LP lock/burn percentage.`, source: "onchain" };
+    }
     return {
-      signal,
-      reason: `${Math.round(liq)} USD on ${market.dexId}. Bonding-curve depth is protocol-owned, not a burned Raydium lock.`,
-      source: "market",
+      signal: trail.burnedOrLockedPct >= 80 ? 82 : trail.burnedOrLockedPct >= 40 ? 62 : 30,
+      reason: `${trail.burnedOrLockedPct.toFixed(0)}% of the queried LP supply is burned or locked on ${trail.dexId ?? "the pool"}.`,
+      source: "onchain",
     };
   }
-  const mcap = market.mcapUsd ?? 0;
-  if (mcap > 0) {
-    const ratio = liq / mcap;
-    if (ratio < 0.04) signal -= 18;
-    else if (ratio > 0.25) signal += 8;
+  if (!market || market.pairAddress == null) {
+    return { signal: 40, reason: "Pool account was not available to query.", source: "modeled" };
   }
-  return {
-    signal,
-    reason: `Pair depth ${Math.round(liq)} USD on ${market.dexId ?? "unknown dex"}${mcap ? ` · ${Math.round((liq / mcap) * 100)}% of cap` : ""}. Lock/burn not independently verified.`,
-    source: "market",
-  };
+  return { signal: 40, reason: "Pool account read failed; no LP lock/burn claim is made.", source: "modeled" };
 }
 
 function liquiditySizeSignal(market: MarketMetrics | null): { signal: number; reason: string; source: SignalSource } {
@@ -242,7 +256,7 @@ function liquiditySizeSignal(market: MarketMetrics | null): { signal: number; re
   };
 }
 
-function organicSignal(market: MarketMetrics | null): { signal: number; reason: string; source: SignalSource } {
+function organicSignal(market: MarketMetrics | null, onchain: OnchainFacts | null): { signal: number; reason: string; source: SignalSource } {
   if (!market) return { signal: 44, reason: "No tape to judge flow.", source: "market" };
   const ratio = uniqueRatio(market.buyers1h ?? market.buyers24h, market.buys1h ?? market.buys24h);
   const buys = market.buys1h ?? market.buys24h ?? 0;
@@ -260,12 +274,15 @@ function organicSignal(market: MarketMetrics | null): { signal: number; reason: 
     if (sellShare < 0.22 && (market.pairAgeMin ?? 0) < 60) signal -= 8;
   }
   const buyers = market.buyers1h ?? market.buyers24h;
+  const early = onchain?.freshWallets;
   return {
     signal,
     reason:
       ratio != null
         ? `Unique-buyer ratio ${Math.round(ratio)}% · ${buyers ?? "?"} buyers vs ${buys} buys. Buy/sell ${buys}/${sells}.`
-        : `Buy/sell ${buys}/${sells}. Unique-wallet ratio not published.`,
+        : early
+          ? `Buy/sell ${buys}/${sells}. RPC sampled ${early.earlyBuyerCount} unique early signers; ${early.freshBuyerCount} were under 7 days old.`
+          : `Buy/sell ${buys}/${sells}. Unique-wallet ratio is not published by DexScreener and no RPC signer sample was available.`,
     source: "market",
   };
 }
@@ -332,11 +349,21 @@ function bundleSignal(
   return {
     signal,
     reason: notes.join(" "),
-    source: holders.length ? "onchain" : "modeled",
+    source: "modeled",
   };
 }
 
-function freshWalletSignal(market: MarketMetrics | null): { signal: number; reason: string; source: SignalSource } {
+function freshWalletSignal(onchain: OnchainFacts | null, market: MarketMetrics | null): { signal: number; reason: string; source: SignalSource } {
+  const trail = onchain?.freshWallets;
+  if (trail?.freshRatioPct != null) {
+    const ratio = trail.freshRatioPct;
+    const signal = ratio >= 75 ? 24 : ratio >= 50 ? 42 : ratio >= 25 ? 64 : 78;
+    return {
+      signal,
+      reason: `${trail.freshBuyerCount}/${trail.earlyBuyerCount} sampled early signers were first active within 7 days (${ratio.toFixed(0)}%). Median sampled wallet age ${trail.fundedAgeDaysMedian == null ? "unknown" : `${trail.fundedAgeDaysMedian.toFixed(1)}d`}. Public RPC cannot prove the funding source itself.`,
+      source: "onchain",
+    };
+  }
   const age = market?.pairAgeMin ?? null;
   const buyers5ish = market?.buyers1h;
   const buys = market?.buys1h;
@@ -462,13 +489,17 @@ function killFlags(
       detail: `Liquidity under $${rules.minLiquidityUsd.toLocaleString()}. Exit is theoretical.`,
     });
   }
-  const rest = (onchain?.topHolders ?? []).slice(1);
-  const topInsider = rest[0]?.pct ?? 0;
+  const clusters = new Map<string, number>();
+  for (const holder of onchain?.topHolders ?? []) {
+    const key = holder.owner ?? holder.address;
+    clusters.set(key, Math.max(clusters.get(key) ?? 0, holder.clusterPct ?? holder.pct));
+  }
+  const topInsider = Math.max(...clusters.values(), 0);
   if (topInsider >= rules.maxTopHolderPct) {
     flags.push({
       code: "WHALE_BAG",
       label: `Single wallet over ${rules.maxTopHolderPct}%`,
-      detail: `Largest non-LP holder controls ${topInsider.toFixed(1)}% of supply.`,
+      detail: `Largest owner cluster controls ${topInsider.toFixed(1)}% of supply.`,
     });
   }
   const trail = onchain?.deployer;
@@ -520,11 +551,11 @@ export function scoreToken(
 
   const a = authoritiesSignal(token.onchain);
   const c = concentrationSignal(token.onchain, token.market);
-  const l = lpSignal(token.market);
+  const l = lpSignal(token.onchain, token.market);
   const s = liquiditySizeSignal(token.market);
-  const o = organicSignal(token.market);
+  const o = organicSignal(token.market, token.onchain);
   const b = bundleSignal(token.market, token.onchain);
-  const f = freshWalletSignal(token.market);
+  const f = freshWalletSignal(token.onchain, token.market);
   const d = deployerSignal(token.onchain, token.market);
 
   const parts: ScorePart[] = [

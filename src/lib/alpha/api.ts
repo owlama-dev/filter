@@ -1,9 +1,18 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { QUOTE_MINTS } from "./defaults";
 import { isSolanaMint } from "./extract";
 import { emptyMetrics } from "./scoring";
-import type { HolderRow, LaunchCandidate, MarketMetrics, OnchainFacts } from "./types";
+import type {
+  BundleTrail,
+  DeployerTrail,
+  FreshWalletTrail,
+  HolderRow,
+  LaunchCandidate,
+  LpTrail,
+  MarketMetrics,
+  OnchainFacts,
+} from "./types";
+import { getSql } from "@/lib/db";
 
 const RPCS = [
   "https://solana-rpc.publicnode.com",
@@ -23,40 +32,6 @@ async function fetchJson<T>(url: string, init?: RequestInit, timeoutMs = 8000): 
   return (await res.json()) as T;
 }
 
-type GeckoPool = {
-  id: string;
-  attributes: {
-    address: string;
-    name: string;
-    pool_created_at: string | null;
-    fdv_usd: string | null;
-    market_cap_usd: string | null;
-    reserve_in_usd: string | null;
-    volume_usd?: { h24?: string; h1?: string };
-  };
-  relationships?: {
-    base_token?: { data?: { id: string } };
-    quote_token?: { data?: { id: string } };
-    dex?: { data?: { id: string } };
-  };
-};
-
-type GeckoToken = {
-  id: string;
-  type: string;
-  attributes: {
-    address: string;
-    name: string;
-    symbol: string;
-    image_url: string | null;
-  };
-};
-
-type GeckoResponse = {
-  data?: GeckoPool[];
-  included?: GeckoToken[];
-};
-
 function ageMin(createdAt: string | null | number | undefined) {
   if (createdAt == null) return null;
   const ts = typeof createdAt === "number" ? createdAt : Date.parse(createdAt);
@@ -70,59 +45,37 @@ function num(v: string | number | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function tokenAddr(id: string | undefined) {
-  if (!id) return null;
-  return id.startsWith("solana_") ? id.slice("solana_".length) : id;
-}
-
-function fromGecko(res: GeckoResponse): LaunchCandidate[] {
-  const tokens = new Map<string, GeckoToken>();
-  for (const row of res.included ?? []) {
-    if (row.type === "token") tokens.set(row.id, row);
-  }
-  const out: LaunchCandidate[] = [];
-  for (const pool of res.data ?? []) {
-    const baseId = pool.relationships?.base_token?.data?.id;
-    const quoteId = pool.relationships?.quote_token?.data?.id;
-    const base = tokens.get(baseId ?? "");
-    const quote = tokens.get(quoteId ?? "");
-    let mint = base?.attributes.address ?? tokenAddr(baseId);
-    let name = base?.attributes.name ?? pool.attributes.name;
-    let symbol = base?.attributes.symbol ?? pool.attributes.name.split("/")[0] ?? "???";
-    const quoteMint = quote?.attributes.address ?? tokenAddr(quoteId);
-    if (mint && QUOTE_MINTS.has(mint) && quoteMint && !QUOTE_MINTS.has(quoteMint)) {
-      mint = quoteMint;
-      name = quote?.attributes.name ?? name;
-      symbol = quote?.attributes.symbol ?? symbol;
-    }
-    if (!mint || !isSolanaMint(mint)) continue;
-    out.push({
-      address: mint,
-      name: name || symbol || "Unknown",
-      symbol: (symbol || "???").slice(0, 12),
-      dexId: pool.relationships?.dex?.data?.id ?? null,
-      pairAddress: pool.attributes.address,
-      imageUrl: base?.attributes.image_url ?? null,
-      liquidityUsd: num(pool.attributes.reserve_in_usd),
-      mcapUsd: num(pool.attributes.market_cap_usd) ?? num(pool.attributes.fdv_usd),
-      volume24h: num(pool.attributes.volume_usd?.h24),
-      pairAgeMin: ageMin(pool.attributes.pool_created_at),
-      createdAt: pool.attributes.pool_created_at,
-    });
-  }
-  return out;
-}
-
-async function gecko(path: string) {
-  return fetchJson<GeckoResponse>(
-    `https://api.geckoterminal.com/api/v2/networks/solana/${path}?include=base_token,quote_token,dex&page=1`,
-    { headers: { accept: "application/json;version=20230302" } },
-  );
-}
-
 export const listLaunchTape = createServerFn({ method: "GET" }).handler(async () => {
-  const res = await gecko("new_pools");
-  return { launches: fromGecko(res), fetchedAt: Date.now(), source: "geckoterminal" };
+  const boosts = await fetchJson<{ tokenAddress?: string; chainId?: string }[]>(
+    "https://api.dexscreener.com/token-boosts/latest/v1",
+  );
+  const addresses = (boosts ?? [])
+    .filter((row) => row.chainId === "solana" && row.tokenAddress && isSolanaMint(row.tokenAddress))
+    .slice(0, 30)
+    .map((row) => row.tokenAddress!);
+  const pairs = await fetchJson<DexPair[]>(
+    `https://api.dexscreener.com/tokens/v1/solana/${addresses.join(",")}`,
+  );
+  const launches = addresses.flatMap((address) => {
+    const pair = pickPair(address, pairs);
+    if (!pair) return [];
+    const market = metricsFromPair(address, pair);
+    const base = pair.baseToken.address === address ? pair.baseToken : pair.quoteToken;
+    return [{
+      address,
+      name: base.name,
+      symbol: base.symbol.slice(0, 12),
+      dexId: pair.dexId ?? null,
+      pairAddress: pair.pairAddress ?? null,
+      imageUrl: null,
+      liquidityUsd: market.liquidityUsd,
+      mcapUsd: market.mcapUsd,
+      volume24h: market.volume24h,
+      pairAgeMin: market.pairAgeMin,
+      createdAt: pair.pairCreatedAt ? new Date(pair.pairCreatedAt).toISOString() : null,
+    } satisfies LaunchCandidate];
+  });
+  return { launches, fetchedAt: Date.now(), source: "dexscreener" };
 });
 
 type DexPair = {
@@ -201,7 +154,7 @@ async function rpc(method: string, params: unknown[]) {
         7000,
       );
       if (json.error) throw new Error(json.error.message ?? "rpc error");
-      return json.result?.value;
+      return json.result?.value ?? json.result;
     } catch (err) {
       lastErr = err;
     }
@@ -209,7 +162,178 @@ async function rpc(method: string, params: unknown[]) {
   throw lastErr instanceof Error ? lastErr : new Error("rpc failed");
 }
 
-async function readMint(address: string): Promise<OnchainFacts> {
+type Sig = { signature: string; slot: number; blockTime: number | null; err: unknown };
+
+async function getSignatures(address: string, limit: number) {
+  const out: Sig[] = [];
+  let before: string | undefined;
+  while (out.length < limit) {
+    const page = (await rpc("getSignaturesForAddress", [
+      address,
+      { limit: Math.min(1000, limit - out.length), ...(before ? { before } : {}) },
+    ])) as Sig[];
+    if (!page?.length) break;
+    out.push(...page);
+    before = page[page.length - 1]?.signature;
+    if (page.length < 1000) break;
+  }
+  return out;
+}
+
+type Transaction = {
+  blockTime?: number | null;
+  transaction?: {
+    message?: {
+      accountKeys?: (string | { pubkey?: string; signer?: boolean })[];
+    };
+  };
+};
+
+function signersOf(tx: Transaction | null) {
+  return (tx?.transaction?.message?.accountKeys ?? [])
+    .filter((key) => typeof key === "string" || key.signer)
+    .map((key) => (typeof key === "string" ? key : key.pubkey))
+    .filter((key): key is string => Boolean(key));
+}
+
+async function traceBundle(address: string): Promise<BundleTrail | null> {
+  try {
+    const signatures = await getSignatures(address, 60);
+    if (!signatures.length) return null;
+    const chronological = signatures.slice().reverse();
+    const creationSlot = chronological[0]!.slot;
+    const early = chronological.slice(0, 40);
+    const sameSlotTxCount = early.filter((row) => row.slot === creationSlot).length;
+    return {
+      creationSlot,
+      earlyTxCount: early.length,
+      sameSlotTxCount,
+      sameSlotPct: early.length ? (sameSlotTxCount / early.length) * 100 : null,
+      tracedAt: Date.now(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function traceDeployer(address: string): Promise<DeployerTrail | null> {
+  try {
+    const signatures = await getSignatures(address, 1000);
+    const earliest = signatures[signatures.length - 1];
+    if (!earliest) return null;
+    const tx = (await rpc("getTransaction", [
+      earliest.signature,
+      { maxSupportedTransactionVersion: 0, encoding: "json" },
+    ])) as Transaction | null;
+    const wallet = signersOf(tx)[0];
+    if (!wallet) return null;
+
+    let walletTxCount: number | null = null;
+    let walletAgeDays: number | null = null;
+    try {
+      const walletSignatures = await getSignatures(wallet, 100);
+      walletTxCount = walletSignatures.length;
+      const oldest = walletSignatures[walletSignatures.length - 1];
+      if (oldest?.blockTime) walletAgeDays = (Date.now() / 1000 - oldest.blockTime) / 86400;
+    } catch {
+      // The ledger still records the wallet when its history is rate-limited.
+    }
+
+    let priorMintCount = 0;
+    let priorRugCount = 0;
+    try {
+      const sql = await getSql();
+      const [row] = await sql.query<{ mint_count: number; rug_count: number }>(
+        "select mint_count, rug_count from dev_wallets where wallet = $1",
+        [wallet],
+      );
+      priorMintCount = row?.mint_count ?? 0;
+      priorRugCount = row?.rug_count ?? 0;
+      await sql.query(
+        `insert into dev_wallets (wallet, tx_count, mint_count) values ($1, $2, 1)
+         on conflict (wallet) do update set tx_count = coalesce(excluded.tx_count, dev_wallets.tx_count),
+           mint_count = dev_wallets.mint_count + 1, updated_at = now()`,
+        [wallet, walletTxCount],
+      );
+    } catch {
+      // Public RPC tracing remains useful even when the optional ledger is unavailable.
+    }
+
+    return { wallet, walletAgeDays, walletTxCount, priorMintCount, priorRugCount, tracedAt: Date.now() };
+  } catch {
+    return null;
+  }
+}
+
+async function traceFreshWallets(address: string): Promise<FreshWalletTrail | null> {
+  try {
+    const signatures = (await getSignatures(address, 40)).slice().reverse();
+    const signers = new Set<string>();
+    for (const row of signatures) {
+      const tx = (await rpc("getTransaction", [
+        row.signature,
+        { maxSupportedTransactionVersion: 0, encoding: "json" },
+      ])) as Transaction | null;
+      for (const signer of signersOf(tx)) signers.add(signer);
+      if (signers.size >= 40) break;
+    }
+    const buyers = [...signers].slice(0, 12);
+    if (!buyers.length) return null;
+    const ages: number[] = [];
+    for (const wallet of buyers) {
+      try {
+        const history = await getSignatures(wallet, 100);
+        const oldest = history[history.length - 1];
+        if (oldest?.blockTime) ages.push((Date.now() / 1000 - oldest.blockTime) / 86400);
+      } catch {
+        // One wallet's history must not erase the rest of the sample.
+      }
+    }
+    ages.sort((a, b) => a - b);
+    const median = ages.length ? ages[Math.floor(ages.length / 2)]! : null;
+    const freshBuyerCount = ages.filter((age) => age <= 7).length;
+    return {
+      earlyBuyerCount: buyers.length,
+      freshBuyerCount,
+      freshRatioPct: ages.length ? (freshBuyerCount / ages.length) * 100 : null,
+      fundedAgeDaysMedian: median,
+      tracedAt: Date.now(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function traceLp(pairAddress: string | null, dexId: string | null): Promise<LpTrail | null> {
+  if (!pairAddress) return null;
+  try {
+    const account = (await rpc("getAccountInfo", [pairAddress, { encoding: "jsonParsed" }])) as {
+      owner?: string;
+      value?: { owner?: string } | null;
+    } | null;
+    const poolAccountOwner = account?.owner ?? account?.value?.owner ?? null;
+    const reserves = (await rpc("getTokenAccountsByOwner", [
+      pairAddress,
+      { programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" },
+      { encoding: "jsonParsed" },
+    ])) as { value?: unknown[] } | unknown[];
+    const reserveTokenAccounts = Array.isArray(reserves) ? reserves.length : reserves?.value?.length ?? 0;
+    return {
+      poolAddress: pairAddress,
+      dexId,
+      poolAccountOwner,
+      poolAccountReadable: Boolean(account),
+      reserveTokenAccounts,
+      lpMint: null,
+      burnedOrLockedPct: null,
+      tracedAt: Date.now(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function readMint(address: string, pairAddress: string | null, dexId: string | null): Promise<OnchainFacts> {
   const facts: OnchainFacts = {
     mintAuthority: undefined,
     freezeAuthority: undefined,
@@ -266,11 +390,40 @@ async function readMint(address: string): Promise<OnchainFacts> {
       covered += pct;
       rows.push({ address: row.address ?? "", pct, uiAmount: ui });
     }
+    const accounts = rows.map((row) => row.address).filter(Boolean);
+    if (accounts.length) {
+      try {
+        const details = (await rpc("getMultipleAccounts", [accounts, { encoding: "jsonParsed" }])) as {
+          value?: { data?: { parsed?: { info?: { owner?: string } } } }[];
+        };
+        const owners = details.value ?? [];
+        const totals = new Map<string, number>();
+        rows.forEach((row, index) => {
+          const owner = owners[index]?.data?.parsed?.info?.owner ?? null;
+          row.owner = owner;
+          if (owner) totals.set(owner, (totals.get(owner) ?? 0) + row.pct);
+        });
+        rows.forEach((row) => {
+          row.clusterPct = row.owner ? totals.get(row.owner) : row.pct;
+        });
+      } catch {
+        // The largest-account result remains usable without owner metadata.
+      }
+    }
     facts.topHolders = rows;
     facts.holderCoveragePct = covered;
   } catch {
     // rate-limit is common; scoring still works off market tape
   }
+  facts.lp = await traceLp(pairAddress, dexId);
+  const [deployer, bundle, freshWallets] = await Promise.all([
+    traceDeployer(address),
+    traceBundle(address),
+    traceFreshWallets(address),
+  ]);
+  facts.deployer = deployer;
+  facts.bundle = bundle;
+  facts.freshWallets = freshWallets;
   return facts;
 }
 
@@ -281,33 +434,23 @@ export const inspectMint = createServerFn({ method: "POST" })
     if (!isSolanaMint(address)) {
       throw new Error("Not a Solana mint");
     }
-    const [dex, onchain] = await Promise.allSettled([
+    const dex = await Promise.allSettled([
       fetchJson<{ pairs?: DexPair[] }>(
         `https://api.dexscreener.com/latest/dex/tokens/${address}`,
       ),
-      readMint(address),
     ]);
-
-    const pairs = dex.status === "fulfilled" ? dex.value.pairs : [];
+    const pairs = dex[0].status === "fulfilled" ? dex[0].value.pairs : [];
     const pair = pickPair(address, pairs);
     const market = metricsFromPair(address, pair);
     const base = pair?.baseToken.address === address ? pair.baseToken : pair?.quoteToken.address === address ? pair.quoteToken : pair?.baseToken;
+    const onchain = await readMint(address, pair?.pairAddress ?? null, pair?.dexId ?? null);
 
     return {
       address,
       name: base?.name ?? shortUnknown(address),
       symbol: (base?.symbol ?? "???").slice(0, 14),
       market,
-      onchain: onchain.status === "fulfilled" ? onchain.value : {
-        mintAuthority: undefined,
-        freezeAuthority: undefined,
-        decimals: null,
-        supply: null,
-        tokenProgram: null,
-        topHolders: [],
-        holderCoveragePct: null,
-        queriedAt: null,
-      },
+      onchain,
       imageUrl: null as string | null,
     };
   });

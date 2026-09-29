@@ -36,7 +36,7 @@ function formatLaunchTape(launch: LaunchCandidate) {
         : `${Math.round(launch.pairAgeMin)}m old`;
   const dex = launch.dexId ?? "unknown dex";
   return [
-    "GECKOTERMINAL · NEW SOLANA POOL",
+    "DEXSCREENER · SOLANA POOL",
     `$${launch.symbol}  ${launch.name}`,
     `mint  ${launch.address}`,
     `${dex} · ${age} · ${lp} · ${cap}`,

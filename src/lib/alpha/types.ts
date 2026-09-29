@@ -54,6 +54,9 @@ export interface HolderRow {
   address: string;
   pct: number;
   uiAmount: number;
+  owner?: string | null;
+  clusterPct?: number;
+  isLp?: boolean;
 }
 
 export interface OnchainFacts {
@@ -69,6 +72,10 @@ export interface OnchainFacts {
   deployer?: DeployerTrail | null;
   /** Real same-block/bundle trace (worker only) — undefined means "not traced". */
   bundle?: BundleTrail | null;
+  /** Best-effort early signer and first-funding trace from public RPC. */
+  freshWallets?: FreshWalletTrail | null;
+  /** Queried pool account facts; lock/burn is unknown unless the account exposes it. */
+  lp?: LpTrail | null;
 }
 
 /** Result of walking the mint's creation transaction and the fee payer's history. */
@@ -89,6 +96,25 @@ export interface BundleTrail {
   earlyTxCount: number;
   sameSlotTxCount: number;
   sameSlotPct: number | null;
+  tracedAt: number;
+}
+
+export interface FreshWalletTrail {
+  earlyBuyerCount: number;
+  freshBuyerCount: number;
+  freshRatioPct: number | null;
+  fundedAgeDaysMedian: number | null;
+  tracedAt: number;
+}
+
+export interface LpTrail {
+  poolAddress: string | null;
+  dexId: string | null;
+  poolAccountOwner: string | null;
+  poolAccountReadable: boolean;
+  reserveTokenAccounts: number;
+  lpMint: string | null;
+  burnedOrLockedPct: number | null;
   tracedAt: number;
 }
 
