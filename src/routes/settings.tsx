@@ -38,7 +38,7 @@ function SettingsPage() {
         <div className="mb-5 flex items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-medium">Live ingest</h2>
-            <p className="text-xs text-muted">Pull new Solana pools onto the telegram tape.</p>
+            <p className="text-xs text-muted">Pull new Solana pools from GeckoTerminal.</p>
           </div>
           <Switch checked={running} onCheckedChange={setRunning} />
         </div>

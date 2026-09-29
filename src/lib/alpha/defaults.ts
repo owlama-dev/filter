@@ -1,7 +1,7 @@
 import type { Channel, KillRules, Weights } from "./types";
 
 export const APP_NAME = "AlphaFilter";
-export const APP_TAGLINE = "Second-layer filter for Solana telegram calls";
+export const APP_TAGLINE = "Second-layer filter for Solana launches";
 
 export const DEFAULT_THRESHOLD = 72;
 
@@ -106,7 +106,15 @@ export const KILL_RULE_META: Record<
   },
 };
 
-export const DEFAULT_CHANNELS: Channel[] = [];
+export const DEFAULT_CHANNELS: Channel[] = [
+  {
+    id: "geckoterminal-solana-new-pools",
+    handle: "solana/new_pools",
+    title: "GeckoTerminal",
+    kind: "onchain_feed",
+    enabled: true,
+  },
+];
 
 export const QUOTE_MINTS = new Set([
   "So11111111111111111111111111111111111111112",

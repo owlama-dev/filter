@@ -1,10 +1,9 @@
 import { create } from "zustand";
 import { inspectMint, listLaunchTape } from "./api";
 import { DEFAULT_CHANNELS, DEFAULT_THRESHOLD, DEFAULT_WEIGHTS } from "./defaults";
-import { extractMints, isSolanaMint, normalizeHandle } from "./extract";
+import { extractMints, isSolanaMint } from "./extract";
 import { scoreToken, buildChecklist } from "./scoring";
 import type {
-  Channel,
   LaunchCandidate,
   PipelineStatus,
   TelegramMessage,
@@ -18,47 +17,30 @@ const MAX_MESSAGES = 60;
 type EngineTimers = {
   drip: number | null;
   refresh: number | null;
-  ticks: Set<number>;
 };
 
-const timers: EngineTimers = { drip: null, refresh: null, ticks: new Set() };
+const timers: EngineTimers = { drip: null, refresh: null };
 
 function uid(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}-${Date.now().toString(36)}`;
 }
 
-function pickChannel(channels: Channel[]) {
-  const live = channels.filter((c) => c.enabled);
-  if (!live.length) return null;
-  return live[Math.floor(Math.random() * live.length)] ?? live[0] ?? null;
-}
-
-function composeMessage(channel: Channel, launch: LaunchCandidate) {
+function formatLaunchTape(launch: LaunchCandidate) {
   const lp = launch.liquidityUsd != null ? `LP $${Math.round(launch.liquidityUsd).toLocaleString("en-US")}` : "LP n/a";
   const cap = launch.mcapUsd != null ? `MC $${Math.round(launch.mcapUsd).toLocaleString("en-US")}` : "MC n/a";
   const age =
     launch.pairAgeMin == null
       ? "age n/a"
       : launch.pairAgeMin < 1
-        ? "fresh pool"
-        : `${Math.round(launch.pairAgeMin)}m on tape`;
+        ? "under 1m"
+        : `${Math.round(launch.pairAgeMin)}m old`;
   const dex = launch.dexId ?? "unknown dex";
   return [
-    `${channel.title.toUpperCase()}`,
+    "GECKOTERMINAL · NEW SOLANA POOL",
     `$${launch.symbol}  ${launch.name}`,
     `mint  ${launch.address}`,
     `${dex} · ${age} · ${lp} · ${cap}`,
   ].join("\n");
-}
-
-function delay(ms: number) {
-  return new Promise<void>((resolve) => {
-    const t = window.setTimeout(() => {
-      timers.ticks.delete(t);
-      resolve();
-    }, ms);
-    timers.ticks.add(t);
-  });
 }
 
 function betterName(inspected: string, fallback: string) {
@@ -67,7 +49,6 @@ function betterName(inspected: string, fallback: string) {
 }
 
 export interface AlphaState {
-  channels: Channel[];
   weights: Weights;
   threshold: number;
   running: boolean;
@@ -85,9 +66,6 @@ export interface AlphaState {
   setWeight: (key: keyof Weights, value: number) => void;
   resetWeights: () => void;
   setFeedMs: (n: number) => void;
-  addChannel: (input: { handle: string; title: string; kind: Channel["kind"] }) => void;
-  toggleChannel: (id: string) => void;
-  removeChannel: (id: string) => void;
   ingestLaunch: (launch: LaunchCandidate, origin: TokenRecord["origin"]) => string | null;
   inspectAddress: (address: string) => string | null;
   refreshTape: () => Promise<void>;
@@ -108,7 +86,6 @@ async function runPipeline(id: string) {
   if (!snap()) return;
 
   patchToken(id, { status: "extracted" });
-  await delay(700 + Math.random() * 500);
 
   const afterWait = snap();
   if (!afterWait) return;
@@ -156,27 +133,20 @@ async function runPipeline(id: string) {
     });
   }
 
-  await delay(1100 + Math.random() * 700);
   const current = snap();
   if (!current) return;
   const { weights, threshold } = useAlpha.getState();
   const analysis = scoreToken(current, weights, threshold);
   const next: PipelineStatus = analysis.passed ? "passed" : "rejected";
   patchToken(id, { analysis, status: "scored" });
-  await delay(420);
   patchToken(id, { status: next });
 }
 
 function dripOnce() {
   const state = useAlpha.getState();
   if (!state.running) return;
-  const live = state.channels.filter((c) => c.enabled);
-  if (!live.length) return;
   const next = state.queue.find((q) => !state.seen.includes(q.address));
-  if (!next) {
-    void state.refreshTape();
-    return;
-  }
+  if (!next) return;
   state.ingestLaunch(next, "tape");
 }
 
@@ -184,14 +154,11 @@ function stopTimers() {
   if (typeof window === "undefined") return;
   if (timers.drip != null) window.clearTimeout(timers.drip);
   if (timers.refresh != null) window.clearInterval(timers.refresh);
-  for (const t of timers.ticks) window.clearTimeout(t);
   timers.drip = null;
   timers.refresh = null;
-  timers.ticks.clear();
 }
 
 export const useAlpha = create<AlphaState>()((set, get) => ({
-  channels: DEFAULT_CHANNELS,
   weights: { ...DEFAULT_WEIGHTS },
   threshold: DEFAULT_THRESHOLD,
   running: true,
@@ -216,37 +183,16 @@ export const useAlpha = create<AlphaState>()((set, get) => ({
     }),
   resetWeights: () => set({ weights: { ...DEFAULT_WEIGHTS }, threshold: DEFAULT_THRESHOLD }),
   setFeedMs: (n) => set({ feedMs: Math.min(20000, Math.max(2500, n)) }),
-  addChannel: (input) => {
-    const handle = normalizeHandle(input.handle);
-    if (!handle) return;
-    set({
-      channels: [
-        {
-          id: uid("ch"),
-          handle,
-          title: input.title.trim() || handle,
-          kind: input.kind,
-          enabled: true,
-        },
-        ...get().channels,
-      ],
-    });
-  },
-  toggleChannel: (id) =>
-    set({
-      channels: get().channels.map((c) => (c.id === id ? { ...c, enabled: !c.enabled } : c)),
-    }),
-  removeChannel: (id) => set({ channels: get().channels.filter((c) => c.id !== id) }),
   ingestLaunch: (launch, origin) => {
     const state = get();
     if (state.seen.includes(launch.address)) {
       return state.tokens.find((t) => t.address === launch.address)?.id ?? null;
     }
-    const channel = pickChannel(state.channels) ?? state.channels[0];
+    const channel = DEFAULT_CHANNELS[0];
     if (!channel) return null;
     const messageId = uid("msg");
     const tokenId = uid("tok");
-    const text = composeMessage(channel, launch);
+    const text = formatLaunchTape(launch);
     const message: TelegramMessage = {
       id: messageId,
       channelId: channel.id,
@@ -332,11 +278,9 @@ export const useAlpha = create<AlphaState>()((set, get) => ({
       set({
         queue: [...get().queue.filter((q) => !seen.has(q.address)), ...fresh].slice(0, 80),
         tapeUpdatedAt: res.fetchedAt,
-        tapeError:
-          res.launches.length === 0
-            ? "No live source configured yet. Add a real source or enable one from the Sources panel."
-            : null,
+        tapeError: null,
       });
+      if (get().running) dripOnce();
     } catch (err) {
       set({
         tapeError: err instanceof Error ? err.message : "Launch tape unavailable",
@@ -353,9 +297,9 @@ export const useAlpha = create<AlphaState>()((set, get) => ({
     }, 45000);
     const pulse = () => {
       dripOnce();
-      timers.drip = window.setTimeout(pulse, get().feedMs + Math.random() * 1400);
+      timers.drip = window.setTimeout(pulse, get().feedMs);
     };
-    timers.drip = window.setTimeout(pulse, 900);
+    timers.drip = window.setTimeout(pulse, get().feedMs);
   },
   stop: () => {
     set({ running: false });

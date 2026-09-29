@@ -1,13 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import { formatAge, formatUsd, relativeTime, shortMint } from "@/lib/alpha/format";
+import { DEFAULT_CHANNELS } from "@/lib/alpha/defaults";
 import type { TokenRecord } from "@/lib/alpha/types";
-import { useAlpha } from "@/lib/alpha/store";
 import { cn } from "@/lib/utils";
 import { ScoreMark } from "@/components/score-mark";
 import { StatusBadge } from "@/components/status-badge";
 
 export function TokenCard({ token, dense = false }: { token: TokenRecord; dense?: boolean }) {
-  const channel = useAlpha((s) => s.channels.find((c) => c.id === token.sourceChannelId));
+  const channel = DEFAULT_CHANNELS.find((c) => c.id === token.sourceChannelId);
   const passed = token.status === "passed";
   const rejected = token.status === "rejected";
   const scored =

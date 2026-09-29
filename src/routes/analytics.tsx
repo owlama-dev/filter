@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from "recharts";
+import { DEFAULT_CHANNELS } from "@/lib/alpha/defaults";
 import { useAlpha, useFeedStats } from "@/lib/alpha/store";
 import { formatUsd } from "@/lib/alpha/format";
 
@@ -7,7 +8,7 @@ export const Route = createFileRoute("/analytics")({ component: AnalyticsPage })
 
 function AnalyticsPage() {
   const tokens = useAlpha((s) => s.tokens);
-  const channels = useAlpha((s) => s.channels);
+  const channels = DEFAULT_CHANNELS;
   const stats = useFeedStats();
   const threshold = useAlpha((s) => s.threshold);
 
@@ -54,7 +55,7 @@ function AnalyticsPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="rounded-2xl bg-surface p-4 shadow-[var(--shadow-border)] sm:p-5">
-          <h2 className="mb-4 text-sm font-medium">Passed vs rejected by desk</h2>
+          <h2 className="mb-4 text-sm font-medium">Passed vs rejected by source</h2>
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={byChannel}>

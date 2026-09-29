@@ -8,13 +8,14 @@ import { Button } from "@/components/ui/button";
 import { tokenExternalLinks } from "@/lib/alpha/links";
 import { formatAge, formatPct, formatUsd, shortMint } from "@/lib/alpha/format";
 import { useAlpha } from "@/lib/alpha/store";
+import { DEFAULT_CHANNELS } from "@/lib/alpha/defaults";
 
 export const Route = createFileRoute("/token/$address")({ component: TokenDetail });
 
 function TokenDetail() {
   const { address } = Route.useParams();
   const token = useAlpha((s) => s.tokens.find((t) => t.address === address));
-  const channel = useAlpha((s) => s.channels.find((c) => c.id === token?.sourceChannelId));
+  const channel = DEFAULT_CHANNELS.find((c) => c.id === token?.sourceChannelId);
 
   if (!token) {
     return (
@@ -54,7 +55,7 @@ function TokenDetail() {
             <p className="text-sm text-muted">{token.name}</p>
             <p className="mt-1 font-mono text-xs text-subtle break-all">{token.address}</p>
             <p className="mt-2 text-xs text-subtle">
-              {channel?.title ?? "Desk"} · {token.origin === "inspect" ? "manual inspect" : "telegram tape"}
+              {channel?.title ?? "Desk"} · {token.origin === "inspect" ? "manual inspect" : "on-chain tape"}
             </p>
           </div>
         </div>
@@ -157,7 +158,7 @@ function TokenDetail() {
           </section>
 
           <section className="rounded-2xl bg-surface p-4 shadow-[var(--shadow-border)] sm:p-5">
-            <h2 className="mb-3 text-sm font-medium">Source alert</h2>
+            <h2 className="mb-3 text-sm font-medium">Pool snapshot</h2>
             <pre className="font-mono text-xs leading-relaxed text-muted whitespace-pre-wrap">
               {token.rawSnippet}
             </pre>

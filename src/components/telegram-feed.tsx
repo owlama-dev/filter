@@ -1,11 +1,12 @@
 import { Link } from "@tanstack/react-router";
 import { formatClock } from "@/lib/alpha/format";
+import { DEFAULT_CHANNELS } from "@/lib/alpha/defaults";
 import { useAlpha } from "@/lib/alpha/store";
 import { cn } from "@/lib/utils";
 
 export function TelegramFeed() {
   const messages = useAlpha((s) => s.messages);
-  const channels = useAlpha((s) => s.channels);
+  const channels = DEFAULT_CHANNELS;
   const tokens = useAlpha((s) => s.tokens);
   const tapeError = useAlpha((s) => s.tapeError);
   const running = useAlpha((s) => s.running);
@@ -14,8 +15,8 @@ export function TelegramFeed() {
     <section className="flex h-full min-h-0 flex-col rounded-2xl bg-surface p-3 shadow-[var(--shadow-border)] sm:p-4">
       <header className="mb-3 flex items-baseline justify-between gap-3 px-1">
         <div>
-          <h2 className="text-sm font-medium tracking-tight">Telegram tape</h2>
-          <p className="text-xs text-muted">Public launch flow, formatted as desk alerts.</p>
+          <h2 className="text-sm font-medium tracking-tight">On-chain tape</h2>
+          <p className="text-xs text-muted">New Solana pools from GeckoTerminal.</p>
         </div>
         <span className={cn("font-mono text-[11px] uppercase", running ? "text-pass" : "text-muted")}>
           {running ? "listening" : "paused"}
@@ -27,7 +28,7 @@ export function TelegramFeed() {
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
         {messages.length === 0 && (
           <p className="px-2 py-8 text-center text-sm text-muted">
-            Waiting for the first alert. New Solana pools are pulled onto this tape in real time.
+            Waiting for the first pool from GeckoTerminal.
           </p>
         )}
         {messages.map((msg) => {

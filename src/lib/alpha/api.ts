@@ -121,11 +121,8 @@ async function gecko(path: string) {
 }
 
 export const listLaunchTape = createServerFn({ method: "GET" }).handler(async () => {
-  // This app is source-driven: real launch data arrives from the configured
-  // source feed and should not be hard-wired to a third-party vendor endpoint.
-  // If no valid source is configured, the tape stays empty until the user adds one.
-  const launches: LaunchCandidate[] = [];
-  return { launches, fetchedAt: Date.now(), source: "source-driven-empty" };
+  const res = await gecko("new_pools");
+  return { launches: fromGecko(res), fetchedAt: Date.now(), source: "geckoterminal" };
 });
 
 type DexPair = {
