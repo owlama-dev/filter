@@ -13,7 +13,7 @@ type Src = { id: string; handle: string };
  * member of every channel you add in the admin panel. Sources are re-read every 30s,
  * so adding, disabling or removing a channel needs no restart.
  */
-export async function startTelegramIngest(): Promise<{ stop: () => Promise<void> } | null> {
+export async function startTelegramIngest(): Promise<{ stop: () => Promise<void>; enabledSourceCount: () => number } | null> {
   if (!env.TELEGRAM_API_ID || !env.TELEGRAM_API_HASH || !env.TELEGRAM_SESSION) {
     console.warn("[telegram] TELEGRAM_* not set, Telegram ingestion disabled (run `npm run telegram:login`)");
     return null;
@@ -23,6 +23,10 @@ export async function startTelegramIngest(): Promise<{ stop: () => Promise<void>
     autoReconnect: true,
   });
   await client.connect();
+  if (!(await client.isUserAuthorized())) {
+    await client.disconnect();
+    throw new Error("Telegram session is not authorized; run `npm run telegram:login` again");
+  }
 
   let byHandle = new Map<string, Src>();
   const reload = async () => {
@@ -52,6 +56,7 @@ export async function startTelegramIngest(): Promise<{ stop: () => Promise<void>
 
   console.log("[telegram] listening");
   return {
+    enabledSourceCount: () => byHandle.size,
     stop: async () => {
       clearInterval(timer);
       await client.disconnect();

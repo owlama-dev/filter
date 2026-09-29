@@ -1,0 +1,1 @@
+import{i as e,t}from"./react-DB-4Zxce.js";import{t as n}from"./jsx-runtime-BtH0gOTJ.js";import{t as r}from"./utils-Cl78mqKH.js";var i=e(t(),1),a=n(),o=i.forwardRef(({className:e,...t},n)=>(0,a.jsx)(`label`,{ref:n,className:r(`text-xs font-medium tracking-wide text-muted`,e),...t}));o.displayName=`Label`;export{o as t};

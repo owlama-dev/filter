@@ -121,21 +121,11 @@ async function gecko(path: string) {
 }
 
 export const listLaunchTape = createServerFn({ method: "GET" }).handler(async () => {
-  const [fresh, trend] = await Promise.allSettled([
-    gecko("new_pools"),
-    gecko("trending_pools"),
-  ]);
-  const rows: LaunchCandidate[] = [];
-  if (fresh.status === "fulfilled") rows.push(...fromGecko(fresh.value));
-  if (trend.status === "fulfilled") rows.push(...fromGecko(trend.value));
-  const seen = new Set<string>();
-  const unique: LaunchCandidate[] = [];
-  for (const row of rows) {
-    if (seen.has(row.address)) continue;
-    seen.add(row.address);
-    unique.push(row);
-  }
-  return { launches: unique, fetchedAt: Date.now(), source: unique.length ? "geckoterminal" : "empty" };
+  // This app is source-driven: real launch data arrives from the configured
+  // source feed and should not be hard-wired to a third-party vendor endpoint.
+  // If no valid source is configured, the tape stays empty until the user adds one.
+  const launches: LaunchCandidate[] = [];
+  return { launches, fetchedAt: Date.now(), source: "source-driven-empty" };
 });
 
 type DexPair = {

@@ -83,7 +83,7 @@ function SettingsPage() {
       <section className="rounded-2xl bg-surface p-4 text-sm text-muted shadow-[var(--shadow-border)] sm:p-5">
         <h2 className="mb-2 text-sm font-medium text-fg">What is real</h2>
         <p>
-          Market tape comes from DexScreener and GeckoTerminal. Mint and freeze authorities are read from Solana RPC. Holder maps use the largest-account call when the public RPC allows it. Deployer funding history and true same-block Jito bundles are not in those feeds — those two checks are labeled modeled so the desk stays honest.
+          Market tape comes from the active source feed you configure for this desk. Mint and freeze authorities are read from Solana RPC when available. Holder maps use the largest-account call when the source exposes it. Deployer and same-block bundle checks stay modeled when the feed does not provide them, so the desk stays honest.
         </p>
       </section>
     </div>

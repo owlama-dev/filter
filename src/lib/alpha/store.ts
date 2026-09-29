@@ -30,7 +30,7 @@ function uid(prefix: string) {
 function pickChannel(channels: Channel[]) {
   const live = channels.filter((c) => c.enabled);
   if (!live.length) return null;
-  return live[Math.floor(Math.random() * live.length)] ?? null;
+  return live[Math.floor(Math.random() * live.length)] ?? live[0] ?? null;
 }
 
 function composeMessage(channel: Channel, launch: LaunchCandidate) {
@@ -332,7 +332,10 @@ export const useAlpha = create<AlphaState>()((set, get) => ({
       set({
         queue: [...get().queue.filter((q) => !seen.has(q.address)), ...fresh].slice(0, 80),
         tapeUpdatedAt: res.fetchedAt,
-        tapeError: res.launches.length ? null : "Launch tape came back empty.",
+        tapeError:
+          res.launches.length === 0
+            ? "No live source configured yet. Add a real source or enable one from the Sources panel."
+            : null,
       });
     } catch (err) {
       set({

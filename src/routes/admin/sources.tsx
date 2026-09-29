@@ -21,12 +21,13 @@ interface SourceRow {
   reputation_sample: number;
   avg_multiple_60m: number | null;
   last_seen_at: string | null;
+  ingested_calls: number;
   error_count: number;
   last_error: string | null;
 }
 
 function SourcesPage() {
-  const { data, refresh } = usePolling(() => adminOverview(), 5000);
+  const { data, error, refresh } = usePolling(() => adminOverview(), 5000);
   const sources = ((data?.sources as SourceRow[] | undefined) ?? []).slice().sort((a, b) => a.title.localeCompare(b.title));
   const [form, setForm] = useState({ kind: "telegram_channel", handle: "", title: "", weight: 1 });
   const [busy, setBusy] = useState<string | null>(null);
@@ -75,6 +76,7 @@ function SourcesPage() {
 
   return (
     <div className="space-y-6">
+      {error && <p role="alert" className="text-sm text-red-500">Source status unavailable: {error}</p>}
       <form onSubmit={onAdd} className="grid gap-3 rounded-2xl bg-surface p-5 shadow-[var(--shadow-border)] sm:grid-cols-[160px_1fr_1fr_auto]">
         <div>
           <Label>Kind</Label>
@@ -125,6 +127,7 @@ function SourcesPage() {
               <th className="px-4 py-3">Kind</th>
               <th className="px-4 py-3">Weight</th>
               <th className="px-4 py-3">Avg 60m mult.</th>
+              <th className="px-4 py-3">Calls captured</th>
               <th className="px-4 py-3">Last seen</th>
               <th className="px-4 py-3">Enabled</th>
               <th className="px-4 py-3" />
@@ -157,6 +160,7 @@ function SourcesPage() {
                   </Badge>
                 </td>
                 <td className="px-4 py-3 tabular-nums">{s.avg_multiple_60m != null ? `${s.avg_multiple_60m.toFixed(2)}×` : "—"}</td>
+                <td className="px-4 py-3 tabular-nums">{s.ingested_calls}</td>
                 <td className="px-4 py-3 text-muted">{s.last_seen_at ? new Date(s.last_seen_at).toLocaleString() : "never"}</td>
                 <td className="px-4 py-3">
                   <Switch checked={s.enabled} disabled={busy === s.id} onCheckedChange={() => toggle(s)} />
@@ -170,7 +174,7 @@ function SourcesPage() {
             ))}
             {sources.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted">
+                <td colSpan={8} className="px-4 py-8 text-center text-muted">
                   No sources yet.
                 </td>
               </tr>

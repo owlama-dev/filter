@@ -8,7 +8,7 @@ export type PipelineStatus =
   | "passed"
   | "rejected";
 
-export type ChannelKind = "channel" | "bot";
+export type ChannelKind = "channel" | "bot" | "onchain_feed";
 
 export interface Channel {
   id: string;

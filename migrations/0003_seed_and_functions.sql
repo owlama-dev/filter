@@ -7,11 +7,8 @@ create table if not exists mentions (
 );
 create index if not exists mentions_token_idx on mentions (token_address);
 
--- Built-in on-chain feeds (admin can disable them; Telegram channels are added in the panel).
-insert into sources (id, kind, handle, title) values
-  ('gecko-new', 'onchain_feed', 'geckoterminal:new_pools', 'GeckoTerminal new pools'),
-  ('gecko-trending', 'onchain_feed', 'geckoterminal:trending_pools', 'GeckoTerminal trending')
-on conflict (id) do nothing;
+-- Start empty: the app should not invent fake channels or feed sources.
+-- Real data sources are added from the admin panel or by the live worker.
 
 -- Version 1 mirrors the defaults the current app ships with.
 insert into scoring_configs (weights, threshold, is_active, note)

@@ -20,7 +20,7 @@ import { InspectBar } from "@/components/inspect-bar";
 const NAV = [
   { to: "/", label: "Pulse", icon: Activity },
   { to: "/passed", label: "Passed", icon: CheckCircle2 },
-  { to: "/channels", label: "Channels", icon: Radio },
+  { to: "/admin/sources", label: "Sources", icon: Radio },
   { to: "/analytics", label: "Analytics", icon: BarChart3 },
   { to: "/settings", label: "Settings", icon: SlidersHorizontal },
   { to: "/admin", label: "Admin", icon: ShieldCheck },

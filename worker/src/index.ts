@@ -76,7 +76,21 @@ async function main() {
         res.writeHead(404).end();
         return;
       }
-      const body = { ok: true, inflight, queueDepth: await depth().catch(() => -1), uptimeSec: Math.round((Date.now() - startedAt) / 1000) };
+      const [ingestion] = await q<{ callsCaptured: number; lastCallAt: string | null }>(
+        `select count(*)::int as "callsCaptured", max(received_at)::text as "lastCallAt" from messages`,
+      ).catch(() => [{ callsCaptured: -1, lastCallAt: null }]);
+      const body = {
+        ok: true,
+        inflight,
+        queueDepth: await depth().catch(() => -1),
+        uptimeSec: Math.round((Date.now() - startedAt) / 1000),
+        telegram: {
+          configured: Boolean(env.TELEGRAM_API_ID && env.TELEGRAM_API_HASH && env.TELEGRAM_SESSION),
+          connected: tg != null,
+          enabledSources: tg?.enabledSourceCount() ?? 0,
+        },
+        ingestion,
+      };
       res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(body));
     })
     .listen(env.PORT);

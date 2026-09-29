@@ -106,48 +106,7 @@ export const KILL_RULE_META: Record<
   },
 };
 
-export const DEFAULT_CHANNELS: Channel[] = [
-  {
-    id: "alpha-desk",
-    handle: "sol_alpha_desk",
-    title: "Sol Alpha Desk",
-    kind: "channel",
-    enabled: true,
-    note: "Curated calls. Usually slower, slightly cleaner tape.",
-  },
-  {
-    id: "degen-wire",
-    handle: "degen_wire",
-    title: "Degen Wire",
-    kind: "channel",
-    enabled: true,
-    note: "High volume. Expect more bonding-curve noise.",
-  },
-  {
-    id: "smart-flow",
-    handle: "smart_flow_sol",
-    title: "Smart Flow",
-    kind: "channel",
-    enabled: true,
-    note: "Wallet-follow style alerts, often late but more sized-in.",
-  },
-  {
-    id: "lp-sentry",
-    handle: "lp_sentry_bot",
-    title: "LP Sentry",
-    kind: "bot",
-    enabled: true,
-    note: "New-pair bot. Fires on pool creation, no opinion.",
-  },
-  {
-    id: "bundle-tape",
-    handle: "bundle_tape",
-    title: "Bundle Tape",
-    kind: "channel",
-    enabled: false,
-    note: "Noisy sniper channel. Off by default.",
-  },
-];
+export const DEFAULT_CHANNELS: Channel[] = [];
 
 export const QUOTE_MINTS = new Set([
   "So11111111111111111111111111111111111111112",

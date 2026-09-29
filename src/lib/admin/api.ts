@@ -54,8 +54,10 @@ export const adminOverview = createServerFn({ method: "GET" })
             from jobs`,
       sql<Row>`select provider, ok, p50_ms, error_rate, last_error, circuit_open_until, updated_at from provider_health order by provider`,
       sql<Row>`select value from system_settings where key = 'engine'`,
-      sql<Row>`select id, kind, handle, title, enabled, weight, reputation_sample, avg_multiple_60m,
-                 reputation_updated_at, last_seen_at, error_count, last_error from sources order by title`,
+      sql<Row>`select s.id, s.kind, s.handle, s.title, s.enabled, s.weight, s.reputation_sample, s.avg_multiple_60m,
+             s.reputation_updated_at, s.last_seen_at, s.error_count, s.last_error,
+             (select count(*)::int from messages m where m.source_id = s.id) as ingested_calls
+        from sources s order by s.title`,
     ]);
     return { byStatus, queue: queue[0], providers, engine: engine[0]?.value, sources };
   });
